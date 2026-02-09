@@ -2,27 +2,40 @@
   "name": "autofill-job-application",
   "version": "1.0.0",
   "description": "Autofills your job application forms using AI in safe and controlled way",
-  "homepage": "https://github.com/Lakshyasaharan5/autofill-job-application#readme",
-  "bugs": {
-    "url": "https://github.com/Lakshyasaharan5/autofill-job-application/issues"
+  "main": "index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "nodemon --watch src --exec ts-node src/index.ts",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write \"src/**/*.+(ts|js|json)\""
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Lakshyasaharan5/autofill-job-application.git"
   },
-  "license": "MIT",
-  "author": "Lakshya Saharan",
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
   "type": "commonjs",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "ts-node src/index.ts"
+  "bugs": {
+    "url": "https://github.com/Lakshyasaharan5/autofill-job-application/issues"
   },
+  "homepage": "https://github.com/Lakshyasaharan5/autofill-job-application#readme",
   "devDependencies": {
-    "@types/node": "^25.2.0",
+    "@eslint/js": "^9.39.2",
+    "@types/node": "^25.2.2",
+    "@typescript-eslint/eslint-plugin": "^8.54.0",
+    "@typescript-eslint/parser": "^8.54.0",
     "eslint": "^9.39.2",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.5",
+    "jiti": "^2.6.1",
+    "nodemon": "^3.1.11",
     "prettier": "^3.8.1",
     "ts-node": "^10.9.2",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.54.0"
   }
 }
