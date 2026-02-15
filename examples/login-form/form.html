@@ -1,0 +1,28 @@
+<html>
+
+<head>
+  <title>Login Form</title>
+</head>
+
+<body>
+  <h1>Login Form</h1>
+  <form>
+    <input type="text" name="username" placeholder="Username">
+    <input type="password" name="password" placeholder="Password">
+    <button type="submit">Login</button>
+  </form>
+  <script>
+    document.querySelector('form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const username = document.querySelector('input[name="username"]').value;
+      const password = document.querySelector('input[name="password"]').value;
+      console.log('Username:', username);
+      console.log('Password:', password);
+
+      // Redirect to dashboard
+      window.location.href = 'dashboard.html';
+    });
+  </script>
+</body>
+
+</html>

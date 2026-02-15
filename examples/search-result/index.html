@@ -1,0 +1,44 @@
+<html>
+<head>
+  <title>Simple Search</title>
+</head>
+<body>
+  <h1>Search Engine</h1>
+
+  <input type="text" id="searchInput" placeholder="Search here...">
+  <button id="searchBtn">Search</button>
+
+  <div id="results"></div>
+
+  <script>
+    const data = {
+      "ai agents": [
+        "What Are AI Agents?",
+        "How Autonomous Agents Work",
+        "Building Browser Agents"
+      ],
+      "playwright": [
+        "Playwright Tutorial",
+        "Automating Browsers with Playwright",
+        "Playwright vs Selenium"
+      ]
+    };
+
+    document.getElementById("searchBtn").addEventListener("click", () => {
+      const query = document.getElementById("searchInput").value.toLowerCase();
+      const resultsDiv = document.getElementById("results");
+      resultsDiv.innerHTML = "";
+
+      if (data[query]) {
+        data[query].forEach(item => {
+          const p = document.createElement("p");
+          p.textContent = item;
+          resultsDiv.appendChild(p);
+        });
+      } else {
+        resultsDiv.innerHTML = "<p>No results found</p>";
+      }
+    });
+  </script>
+</body>
+</html>
