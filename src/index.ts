@@ -5,8 +5,8 @@ const launchBrowser = async () => {
 
   const page = await browser.newPage();
   // await page.goto('file:///Users/lakshyasaharan/projects/stagehand-lite/examples/company-site/index.html');
-  // await page.goto('https://ultimateqa.com/');
-  await page.goto('https://google.com/');
+  await page.goto('https://ultimateqa.com/');
+  // await page.goto('https://google.com/');
   // await page.locator('//html[1]/body[1]/c-wiz[2]/div[1]/div[2]/c-wiz[1]/div[1]/c-wiz[1]/div[2]/div[2]/div[1]/section[5]/div[1]/div[1]/div[1]/div[1]/div[1]/span[1]/div[1]/button[1]').click();
   const client = await page.context().newCDPSession(page);
   await client.send('DOM.enable');
@@ -23,6 +23,7 @@ const launchBrowser = async () => {
 
   const { nodes } = await client.send("Accessibility.getFullAXTree");
   const axTree = buildAXTree(nodes);
+
   printAXTree(axTree);
 
   const pruned = pruneAXTree(axTree);
@@ -37,73 +38,44 @@ launchBrowser();
 function pruneAXTree(nodes: any[]): any[] {
   const cleaned: any[] = [];
 
-  const noiseRoles = new Set([
+  const structuralRoles = new Set([
+    "generic",
     "none",
     "InlineTextBox",
-    "StaticText",
-    "ListMarker",
-    "generic",
-    "group",
-  ]);
-
-  const semanticRoles = new Set([
-    "RootWebArea",
-    "heading",
-    "paragraph",
-    "link",
-    "button",
-    "textbox",
-    "searchbox",
-    "combobox",
-    "list",
-    "listitem",
-    "navigation",
-    "article",
-    "banner",
-    "contentinfo",
-    "form",
-    "image",
   ]);
 
   for (const node of nodes) {
-    const role = node.role?.value || "";
-    let name = node.name?.value || "";
+    let role = node.role?.value || "";
+    let name = (node.name?.value || "").trim();
 
-    // 1️⃣ Recursively prune children first
-    const children = pruneAXTree(node.children || []);
+    // Recursively prune children first
+    let children = pruneAXTree(node.children || []);
 
-    // 2️⃣ Merge all descendant text for text-bearing roles
-    if (["paragraph", "heading", "link", "button"].includes(role)) {
-      const text = collectText(node);
-      if (text && !name.trim()) {
-        name = text;
-      }
-    }
-
-    // 3️⃣ If ignored → hoist children
+    // Skip ignored nodes completely
     if (node.ignored) {
       cleaned.push(...children);
       continue;
     }
 
-    // 4️⃣ Drop noise roles entirely
-    if (noiseRoles.has(role)) {
-      cleaned.push(...children);
+    // Drop decorative images
+    if (role === "image" && !name) {
       continue;
     }
 
-    // 5️⃣ Drop decorative images (no accessible name)
-    if (role === "image" && !name.trim()) {
+    // Remove redundant static text children
+    children = removeRedundantStaticTextChildren(name, children);
+
+    // Structural role handling
+    if (structuralRoles.has(role)) {
+      if (children.length === 1) {
+        cleaned.push(children[0]);
+      } else if (children.length > 1) {
+        cleaned.push(...children);
+      }
       continue;
     }
 
-    // 6️⃣ If not semantic and has children → hoist
-    if (!semanticRoles.has(role)) {
-      cleaned.push(...children);
-      continue;
-    }
-
-    // 7️⃣ Keep meaningful node
+    // Keep everything else (no whitelist!)
     cleaned.push({
       role,
       name,
@@ -115,30 +87,28 @@ function pruneAXTree(nodes: any[]): any[] {
   return cleaned;
 }
 
-function collectText(node: any): string {
-  let text = "";
+function removeRedundantStaticTextChildren(parentName: string, children: any[]) {
+  if (!parentName) return children;
 
-  function traverse(n: any) {
-    const role = n.role?.value || "";
+  const normalizedParent = normalizeSpaces(parentName);
 
-    // Only collect leaf text boxes
-    if (role === "InlineTextBox") {
-      text += (n.name?.value || "") + " ";
-      return; // stop deeper traversal
-    }
-
-    for (const child of n.children || []) {
-      traverse(child);
+  let combined = "";
+  for (const child of children) {
+    if (child.role === "StaticText" && child.name) {
+      combined += normalizeSpaces(child.name);
     }
   }
 
-  traverse(node);
+  if (normalizeSpaces(combined) === normalizedParent) {
+    return children.filter((c) => c.role !== "StaticText");
+  }
 
-  return text.replace(/\s+/g, " ").trim();
+  return children;
 }
 
-
-
+function normalizeSpaces(s: string) {
+  return s.replace(/\s+/g, " ").trim();
+}
 
 
 function printCleanTree(nodes: any[], depth = 0) {
