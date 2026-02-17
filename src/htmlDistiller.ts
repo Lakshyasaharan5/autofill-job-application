@@ -1,14 +1,5 @@
 import { Page } from "playwright";
-
-type AXNodeLite = {
-  nodeId: string;
-  parentId?: string;
-  role: string;
-  name: string;
-  backendDOMNodeId?: number;
-  ignored?: boolean;
-  children: AXNodeLite[];
-};
+import { AXNodeLite } from "./types";
 
 export async function distill(page: Page): Promise<{ llmReadyTree: string; xpathMap: Map<number, string> }> {
   const cdp = await page.context().newCDPSession(page);
@@ -71,7 +62,7 @@ function pruneAXTree(nodes: AXNodeLite[]): AXNodeLite[] {
   ]);
 
   for (const node of nodes) {
-    let { role, name, backendDOMNodeId, ignored } = node;
+    const { role, name, backendDOMNodeId, ignored } = node;
 
     let children = pruneAXTree(node.children);
 
@@ -183,9 +174,9 @@ function buildXpathMap(domRoot: any) {
 
   if (!htmlNode) throw new Error("HTML root not found");
 
-  traverse(htmlNode, "/html[1]");
+  dfs(htmlNode, "//html[1]");
 
-  function traverse(node: any, currentPath: string) {
+  function dfs(node: any, currentPath: string) {
     if (node.backendNodeId) {
       xpathMap.set(node.backendNodeId, currentPath);
     }
@@ -203,7 +194,7 @@ function buildXpathMap(domRoot: any) {
       tagCounter[tag] = (tagCounter[tag] || 0) + 1;
       const index = tagCounter[tag];
       const childPath = `${currentPath}/${tag}[${index}]`;
-      traverse(child, childPath);
+      dfs(child, childPath);
     }
   }
 
