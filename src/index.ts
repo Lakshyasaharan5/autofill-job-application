@@ -1,42 +1,114 @@
-import { chromium } from 'playwright';
+import { chromium } from "playwright";
+
+/* ============================
+   Internal Clean AX Node Type
+============================ */
+
+type AXNodeLite = {
+  nodeId: string;
+  parentId?: string;
+  role: string;
+  name: string;
+  backendDOMNodeId?: number;
+  ignored?: boolean;
+  children: AXNodeLite[];
+};
+
+/* ============================
+   Launch
+============================ */
 
 const launchBrowser = async () => {
-  const browser = await chromium.launch({ headless: false, slowMo: 1000 });
+  const browser = await chromium.launch({ headless: false, slowMo: 500 });
 
   const page = await browser.newPage();
-  // await page.goto('file:///Users/lakshyasaharan/projects/stagehand-lite/examples/company-site/index.html');
-  await page.goto('https://ultimateqa.com/');
-  // await page.goto('https://google.com/');
-  // await page.locator('//html[1]/body[1]/c-wiz[2]/div[1]/div[2]/c-wiz[1]/div[1]/c-wiz[1]/div[2]/div[2]/div[1]/section[5]/div[1]/div[1]/div[1]/div[1]/div[1]/span[1]/div[1]/button[1]').click();
+  // await page.goto("https://ultimateqa.com/");
+  // await page.goto("https://google.com/");
+  await page.goto("file:///Users/lakshyasaharan/projects/stagehand-lite/examples/company-site/index.html");
+
   const client = await page.context().newCDPSession(page);
-  await client.send('DOM.enable');
-  await client.send('Accessibility.enable');
+
+  await client.send("DOM.enable");
+  await client.send("Accessibility.enable");
+
   const { root } = await client.send("DOM.getDocument", {
     depth: -1,
     pierce: true,
   });
 
+  // Optional: inspect DOM
   printDOM;
 
   const xpathMap = buildXpathMap(root);
-  console.log(xpathMap.get(2132));
+  console.log("Sample XPath:", xpathMap.values().next().value);
 
   const { nodes } = await client.send("Accessibility.getFullAXTree");
-  const axTree = buildAXTree(nodes);
 
-  printAXTree(axTree);
+  /* ============================
+     NORMALIZE → BUILD → PRINT
+  ============================ */
+
+  const normalized = normalizeAXNodes(nodes);
+  const axTree = buildAXTree(normalized);
+
+  console.log("\n==== RAW AX TREE ====\n");
+  printTree(axTree);
 
   const pruned = pruneAXTree(axTree);
 
-  printCleanTree(pruned);
+  console.log("\n==== PRUNED TREE ====\n");
+  printTree(pruned);
 
   await browser.close();
 };
 
 launchBrowser();
 
-function pruneAXTree(nodes: any[]): any[] {
-  const cleaned: any[] = [];
+/* ============================
+   Normalize CDP → Internal
+============================ */
+
+function normalizeAXNodes(rawNodes: any[]): AXNodeLite[] {
+  return rawNodes.map((node) => ({
+    nodeId: node.nodeId,
+    parentId: node.parentId,
+    role: node.role?.value || "",
+    name: (node.name?.value || "").trim(),
+    backendDOMNodeId: node.backendDOMNodeId,
+    ignored: node.ignored || false,
+    children: [],
+  }));
+}
+
+/* ============================
+   Build Hierarchical Tree
+============================ */
+
+function buildAXTree(nodes: AXNodeLite[]): AXNodeLite[] {
+  const nodeMap = new Map<string, AXNodeLite>();
+  const roots: AXNodeLite[] = [];
+
+  for (const node of nodes) {
+    nodeMap.set(node.nodeId, node);
+  }
+
+  for (const node of nodes) {
+    if (node.parentId && nodeMap.has(node.parentId)) {
+      nodeMap.get(node.parentId)!.children.push(node);
+    } else {
+      roots.push(node);
+    }
+  }
+
+  return roots;
+}
+
+/* ============================
+   Prune Logic (Stagehand-style)
+============================ */
+
+function pruneAXTree(nodes: AXNodeLite[]): AXNodeLite[] {
+  const cleaned: AXNodeLite[] = [];
 
   const structuralRoles = new Set([
     "generic",
@@ -45,41 +117,33 @@ function pruneAXTree(nodes: any[]): any[] {
   ]);
 
   for (const node of nodes) {
-    let role = node.role?.value || "";
-    let name = (node.name?.value || "").trim();
+    let { role, name, backendDOMNodeId, ignored } = node;
 
-    // Recursively prune children first
-    let children = pruneAXTree(node.children || []);
+    let children = pruneAXTree(node.children);
 
-    // Skip ignored nodes completely
-    if (node.ignored) {
+    if (ignored) {
       cleaned.push(...children);
       continue;
     }
 
     // Drop decorative images
-    if (role === "image" && !name) {
-      continue;
-    }
+    if (role === "image" && !name) continue;
 
     // Remove redundant static text children
     children = removeRedundantStaticTextChildren(name, children);
 
-    // Structural role handling
+    // Structural collapse
     if (structuralRoles.has(role)) {
-      if (children.length === 1) {
-        cleaned.push(children[0]);
-      } else if (children.length > 1) {
-        cleaned.push(...children);
-      }
+      if (children.length === 1) cleaned.push(children[0]);
+      else cleaned.push(...children);
       continue;
     }
 
-    // Keep everything else (no whitelist!)
     cleaned.push({
+      nodeId: node.nodeId,
       role,
       name,
-      backendDOMNodeId: node.backendDOMNodeId,
+      backendDOMNodeId: backendDOMNodeId ?? 0,
       children,
     });
   }
@@ -87,7 +151,14 @@ function pruneAXTree(nodes: any[]): any[] {
   return cleaned;
 }
 
-function removeRedundantStaticTextChildren(parentName: string, children: any[]) {
+/* ============================
+   Remove duplicate static text
+============================ */
+
+function removeRedundantStaticTextChildren(
+  parentName: string,
+  children: AXNodeLite[]
+): AXNodeLite[] {
   if (!parentName) return children;
 
   const normalizedParent = normalizeSpaces(parentName);
@@ -110,68 +181,33 @@ function normalizeSpaces(s: string) {
   return s.replace(/\s+/g, " ").trim();
 }
 
+/* ============================
+   Universal Print Function
+============================ */
 
-function printCleanTree(nodes: any[], depth = 0) {
+function printTree(nodes: AXNodeLite[], depth = 0) {
   const indent = "  ".repeat(depth);
 
   for (const node of nodes) {
     console.log(
-      `${indent}${node.role}${node.name ? ` "${node.name}"` : ""}`
+      `${indent}${node.role}${
+        node.name ? ` "${node.name}"` : ""
+      } (backendId: ${node.backendDOMNodeId ?? "-"})`
     );
 
-    if (node.children?.length) {
-      printCleanTree(node.children, depth + 1);
+    if (node.children.length) {
+      printTree(node.children, depth + 1);
     }
   }
 }
 
-
-function buildAXTree(nodes: any[]) {
-  const nodeMap = new Map<string, any>();
-  const roots: any[] = [];
-
-  // First pass: store nodes
-  for (const node of nodes) {
-    node.children = [];
-    nodeMap.set(node.nodeId, node);
-  }
-
-  // Second pass: link parent-child
-  for (const node of nodes) {
-    if (node.parentId && nodeMap.has(node.parentId)) {
-      nodeMap.get(node.parentId).children.push(node);
-    } else {
-      roots.push(node);
-    }
-  }
-
-  return roots;
-}
-
-function printAXTree(nodes: any[], depth = 0) {
-  const indent = "  ".repeat(depth);
-
-  for (const node of nodes) {
-    const role = node.role?.value || "unknown";
-    const name = node.name?.value || "";
-
-    console.log(
-      `${indent}${role}${name ? ` "${name}"` : ""} (backendId: ${node.backendDOMNodeId || "-"})`
-    );
-
-    if (node.children?.length) {
-      printAXTree(node.children, depth + 1);
-    }
-  }
-}
+/* ============================
+   DOM Printer (Optional)
+============================ */
 
 function printDOM(node: any, depth = 0) {
   const indent = "  ".repeat(depth);
-
-  const name = node.nodeName;
-  const id = node.backendNodeId;
-
-  console.log(`${indent}${name} (${id})`);
+  console.log(`${indent}${node.nodeName} (${node.backendNodeId})`);
 
   if (!node.children) return;
 
@@ -180,21 +216,21 @@ function printDOM(node: any, depth = 0) {
   }
 }
 
+/* ============================
+   XPath Map Builder
+============================ */
+
 function buildXpathMap(domRoot: any) {
   const xpathMap = new Map<number, string>();
 
-  // Find real <html> root (skip #document)
   const htmlNode = domRoot.children?.find(
     (child: any) =>
       child.nodeType === 1 &&
       child.nodeName.toLowerCase() === "html"
   );
 
-  if (!htmlNode) {
-    throw new Error("HTML root not found");
-  }
+  if (!htmlNode) throw new Error("HTML root not found");
 
-  // Start traversal from real html
   traverse(htmlNode, "/html[1]");
 
   function traverse(node: any, currentPath: string) {
@@ -204,7 +240,6 @@ function buildXpathMap(domRoot: any) {
 
     if (!node.children) return;
 
-    // Only count ELEMENT siblings
     const elementChildren = node.children.filter(
       (child: any) => child.nodeType === 1
     );
@@ -213,12 +248,9 @@ function buildXpathMap(domRoot: any) {
 
     for (const child of elementChildren) {
       const tag = child.nodeName.toLowerCase();
-
       tagCounter[tag] = (tagCounter[tag] || 0) + 1;
       const index = tagCounter[tag];
-
       const childPath = `${currentPath}/${tag}[${index}]`;
-
       traverse(child, childPath);
     }
   }
