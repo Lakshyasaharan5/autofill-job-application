@@ -1,28 +1,14 @@
 import { Page } from "playwright";
-import { createOpenAI } from '@ai-sdk/openai';
-import { generateText, stepCountIs } from 'ai';
-import dotenv from 'dotenv';
 import { createTools } from "./tools";
 import { buildPrompt } from "./prompt";
+import { LLMClient } from "./interfaces";
 
-dotenv.config({ quiet: true });
-
-export async function runAgent(page: Page, userQuery: string) {  
-  const openai = createOpenAI({
-    apiKey: process.env.OPENAI_API_KEY || '',
-  });
-
-  const state = {
+export async function runAgent(page: Page, userQuery: string, llm: LLMClient) {
+  const tools = createTools({
     page,
     xpathMap: new Map<number, string>(),
-  };
-
-  const result = await generateText({
-    model: openai('gpt-5-nano'),
-    prompt: buildPrompt(userQuery, page.url()),
-    tools: createTools(state),    
-    stopWhen: stepCountIs(10),
   });
- 
+  const systemPrompt = buildPrompt(userQuery, page.url());
+  const result = await llm.generate({ tools, systemPrompt });
   console.log("LLM response:", result.text);
 }
